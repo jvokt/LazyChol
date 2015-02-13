@@ -23,12 +23,17 @@ void cholERI(BasisSet_t basis, ERD_t erd, double** G, double tol, int max_rank, 
   for (int i = 0; i < N; i++)
     piv[i] = i;
   
+  printf("Compute diagonal\n");
+
   // Compute diagonal
   computeDiag(basis, erd, diag); 
+
+  printf("Begin main iteration\n");
 
   // Begin main iteration
   int i = 0;
   while (i < max_rank) {
+    printf("i = %d",i);
     // Determine next pivot index
     int pivot = i;
     double dmax = diag[piv[i]];
@@ -48,6 +53,7 @@ void cholERI(BasisSet_t basis, ERD_t erd, double** G, double tol, int max_rank, 
     piv[i] = piv[pivot];
     piv[pivot] = tempint;
     
+    printf("Compute column\n");
     // Compute column of original matrix
     double * column = *G + i*N;
     computeColumn(basis, erd, piv[i], column);

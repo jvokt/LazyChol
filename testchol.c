@@ -37,12 +37,13 @@ int main (int argc, char **argv)
   
   const uint64_t freq = get_cpu_frequency();
   const int nthreads = atoi(argv[3]);
+  /*
 #ifdef _OPENMP
   omp_set_num_threads(nthreads);
 #else
   assert(nthreads == 1);
 #endif
-
+  */
   // load basis set
   BasisSet_t basis;
   CInt_createBasisSet(&basis);
@@ -68,11 +69,18 @@ int main (int argc, char **argv)
   
   double* G_ERI;
   double tol = 1e-6;
-  //int max_rank = n2;//(1-floor(log10(tol)))*n;
-  int max_rank = (1-floor(log10(tol)))*n;
+  int max_rank = n2;
+  //int max_rank = (1-floor(log10(tol)))*n;
   int rank;
   const uint64_t start_clock = __rdtsc();
   cholERI(basis, erd, &G_ERI, tol, max_rank, &rank);
+  const uint64_t end_clock = __rdtsc();
+  const uint64_t total_ticks = end_clock - start_clock;
+  const double timepass = ((double) total_ticks) / freq;
+  printf("Done\n");
+  printf("Total GigaTicks: %.3lf, freq = %.3lf GHz\n", (double) (total_ticks) * 1.0e-9, (double)freq/1.0e9);
+  printf("Total time: %.4lf secs\n", timepass);
+
   printf("n: %d, rank: %d, 7n: %d, n2: %d\n",n,rank,7*n,n2);
   double* diag = (double*) malloc(n2*sizeof(double));
   computeDiag(basis, erd, diag);
@@ -86,14 +94,7 @@ int main (int argc, char **argv)
       printf("i=%d, truth=%1.2e, approx=%1.2e, error: %1.2e\n", i, diag[i], aii, abserror2);
   }
   free(diag);
-  
-  const uint64_t end_clock = __rdtsc();
-  const uint64_t total_ticks = end_clock - start_clock;
-  const double timepass = ((double) total_ticks) / freq;
-  printf("Done\n");
-  printf("Total GigaTicks: %.3lf, freq = %.3lf GHz\n", (double) (total_ticks) * 1.0e-9, (double)freq/1.0e9);
-  printf("Total time: %.4lf secs\n", timepass);
-  /*
+
   printf("Testing accuracy for each shell quartet\n");
   double chol_time_total = 0;
   double CInt_time_total = 0;
@@ -131,10 +132,11 @@ int main (int argc, char **argv)
 	      for (int iP = 0; iP < dimP; iP++) {
 		for (int iQ = 0; iQ < dimQ; iQ++) {
 		  int idx = iM + dimM * (iN + dimN * (iP + dimP *(iQ)));
-		  double abserror = fabs(integrals[idx] - cholintegrals[idx]);
-		  if (abserror > tol) {
+		  double abserror2 = (integrals[idx] - cholintegrals[idx]);
+		  abserror2 = abserror2*abserror2;
+		  if (abserror2 > tol) {
 		    correct = 0;
-		    printf("Integral does not satisfy error tolerance: error = %1.2e\n",abserror);
+		    printf("Integral does not satisfy error tolerance: error = %1.2e\n",abserror2);
 		  }
 		}
 	      }
@@ -150,33 +152,35 @@ int main (int argc, char **argv)
   } else {
     printf("Some integrals did not satisfy error tolerance\n");
   }
-  printf("Total time to eval shell from Cholesky factor: %.4lf secs\n", chol_time_total);
-  printf("Total time to eval shell with CInt: %.4lf secs\n", CInt_time_total);
+  printf("Total time to eval shells from Cholesky factor: %.4lf secs\n", chol_time_total);
+  printf("Total time to eval shells with CInt: %.4lf secs\n", CInt_time_total);
+  printf("Total time to compute Cholesky factor and eval shells from Cholesky factor: %.4lf secs\n", timepass+chol_time_total);
+
   printf("Computing Structured Lazy Evaluation Cholesky of ERIs\n");
   double* G_structERI;
   max_rank = (n*(n+1))/2;
   const uint64_t struct_start_clock = __rdtsc();
   structcholERI(basis, erd, &G_structERI, tol, max_rank, &rank);
-
-  double* structdiag = (double*) malloc(max_rank*sizeof(double));
-  computeStructDiag(basis, erd, structdiag);
-  for (int i = 0; i < max_rank; i++) {
-    double aii = 0;
-    for (int j = 0; j < rank; j++) {
-      aii += G_structERI[i+j*n2] * G_structERI[i+j*n2];
-    }
-    double abserror2 = (structdiag[i] - aii)*(structdiag[i] - aii);
-    if (abserror2 > tol)
-      printf("i=%d, truth=%1.2e, approx=%1.2e, error: %1.2e\n", i, structdiag[i], aii, abserror2);
-  }
-  free(structdiag);
-
   const uint64_t struct_end_clock = __rdtsc();
   const uint64_t struct_total_ticks = struct_end_clock - struct_start_clock;
   const double struct_timepass = ((double) struct_total_ticks) / freq;
   printf("Done\n");
   printf("Total GigaTicks: %.3lf, freq = %.3lf GHz\n", (double) (struct_total_ticks) * 1.0e-9, (double)freq/1.0e9);
   printf("Total time: %.4lf secs\n", struct_timepass);
+  
+  
+  double* structdiag = (double*) malloc(max_rank*sizeof(double));
+  computeStructDiag(basis, erd, structdiag);
+  for (int i = 0; i < max_rank; i++) {
+    double aii = 0;
+    for (int j = 0; j < rank; j++) {
+      aii += G_structERI[i+j*max_rank] * G_structERI[i+j*max_rank];
+    }
+    double abserror2 = (structdiag[i] - aii)*(structdiag[i] - aii);
+    if (abserror2 > tol)
+      printf("i=%d, truth=%1.2e, approx=%1.2e, error: %1.2e\n", i, structdiag[i], aii, abserror2);
+  }
+  free(structdiag);
   printf("Testing accuracy for each shell quartet\n");
   double struct_chol_time_total = 0;
   CInt_time_total = 0;
@@ -212,10 +216,11 @@ int main (int argc, char **argv)
 	      for (int iP = 0; iP < dimP; iP++) {
 		for (int iQ = 0; iQ < dimQ; iQ++) {
 		  int idx = iM + dimM * (iN + dimN * (iP + dimP *(iQ)));
-		  double abserror = fabs(integrals[idx] - cholintegrals[idx]);
-		  if (abserror > tol) {
+		  double abserror2 = (integrals[idx] - cholintegrals[idx]);
+		  abserror2 = abserror2*abserror2;
+		  if (abserror2 > tol) {
 		    correct = 0;
-		    printf("Integral does not satisfy error tolerance: error = %1.2e\n",abserror);
+		    printf("Integral does not satisfy error tolerance: error = %1.2e\n",abserror2);
 		  }
 		}
 	      }
@@ -233,8 +238,9 @@ int main (int argc, char **argv)
   }
   printf("Total time to eval shells from structured Cholesky factor: %.4lf secs\n", struct_chol_time_total);
   printf("Total time to eval shells with CInt: %.4lf secs\n", CInt_time_total);
+  printf("Total time to compute Cholesky factor and eval shells from Cholesky factor: %.4lf secs\n", struct_timepass+struct_chol_time_total);
+
   free(G_structERI);  
-  */
   free(G_ERI);
   return 0;
 }
