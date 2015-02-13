@@ -1,0 +1,113 @@
+FC_PNR = ifort -m64 -xSSE4.1
+FC_NHM = ifort -m64 -xSSE4.2
+FC_SNB = ifort -m64 -xAVX 
+FC_IVB = ifort -m64 -xCORE-AVX-I
+FC_HSW = ifort -m64 -xCORE-AVX2
+FC_MIC = ifort -mmic
+FC_PLD = ifort -m64 -mavx -fma
+FC_NHM_OFFLOAD = $FC_NHM
+FC_SNB_OFFLOAD = $FC_SNB
+FC_IVB_OFFLOAD = $FC_IVB
+FC_HSW_OFFLOAD = $FC_HSW
+FFLAGS = -O3 -g -reentrancy threaded -recursive
+CC_PNR = icc -m64 -xSSE4.1 -DERD_PNR -D__ERD_PROFILE__ -offload=none -diag-disable 161,2423
+CC_NHM = icc -m64 -xSSE4.2 -DERD_NHM -D__ERD_PROFILE__ -offload=none -diag-disable 161,2423
+CC_SNB = icc -m64 -xAVX -DERD_SNB -D__ERD_PROFILE__ -offload=none -diag-disable 161,2423
+CC_IVB = icc -m64 -xCORE-AVX-I -DERD_IVB -D__ERD_PROFILE__ -offload=none -diag-disable 161,2423
+CC_HSW = icc -m64 -xCORE-AVX2 -DERD_HSW -D__ERD_PROFILE__ -offload=none -diag-disable 161,2423
+CC_MIC = icc -mmic -no-opt-prefetch -DERD_MIC -D__ERD_PROFILE__ -offload=none -diag-disable 161,2423
+CC_PLD = icc -m64 -mavx -fma -DERD_PLD -D__ERD_PROFILE__ -offload=none -diag-disable 161,2423
+CC_NHM_OFFLOAD = icc -m64 -xSSE4.2 -DERD_NHM -offload-option,mic,compiler,"-z defs -no-opt-prefetch"
+CC_SNB_OFFLOAD = icc -m64 -xAVX -DERD_SNB -offload-option,mic,compiler,"-z defs -no-opt-prefetch"
+CC_IVB_OFFLOAD = icc -m64 -xCORE-AVX-I -DERD_IVB -offload-option,mic,compiler,"-z defs -no-opt-prefetch"
+CC_HSW_OFFLOAD = icc -m64 -xCORE-AVX2 -DERD_HSW -offload-option,mic,compiler,"-z defs -no-opt-prefetch"
+CFLAGS = -O3 -g -std=gnu99 -D__ALIGNLEN__=64 -Wall -Wextra -Werror -Wno-unused-variable -openmp
+CFLAGS2 = -O3 -g -std=gnu99 -D__ALIGNLEN__=64 -Iexternal/Yeppp/include -Wall -Wextra -Werror -Wno-unused-variable -openmp
+LDFLAGS = -static-intel -lifcore -openmp -lrt
+AR = xiar
+AR_OFFLOAD = xiar -qoffload-build
+rule COMPILE_F90
+  command = $FC $FFLAGS -o $out -c $in
+  description = F90[$ARCH] $in
+rule COMPILE_F77
+  command = $FC $FFLAGS -o $out -c $in
+  description = F77[$ARCH] $in
+rule COMPILE_C
+  depfile = $DEP_FILE
+  command = $CC $CFLAGS -MMD -MT $out -MF $DEP_FILE -o $out -c $SOURCE
+  description = CC[$ARCH] $in
+rule LINK
+  command = $CC $CFLAGS -o $out $in $LDFLAGS
+  description = CCLD[$ARCH] $out
+rule CREATE_STATIC_LIBRARY
+  command = $AR rcs $out $in
+  description = AR[$ARCH] $out
+rule GENERATE_HEADER
+  command = cd $WORKDIR && bash $SCRIPT
+  description = SH $SCRIPT
+build testprog/ivb/screening.c.o : COMPILE_C testprog/screening.c include/CInt.h
+  DEP_FILE = testprog/ivb/screening.c.d
+  SOURCE = testprog/screening.c
+  CC = $CC_IVB
+  CFLAGS = $CFLAGS -openmp -Iinclude
+  ARCH = IVB
+build testprog/ivb/testCInt.c.opt.o : COMPILE_C testprog/testCInt.c include/CInt.h
+  DEP_FILE = testprog/ivb/testCInt.c.opt.o.d
+  SOURCE = testprog/testCInt.c
+  CC = $CC_IVB
+  CFLAGS = $CFLAGS -Iexternal/erd -Itestprog -Iinclude
+  ARCH = IVB
+build testprog/ivb/Test.Opt : LINK testprog/ivb/testCInt.c.opt.o testprog/ivb/screening.c.o lib/ivb/libcint-opt.a lib/ivb/liboed-opt.a lib/ivb/liberd-opt.a
+  CC = $CC_IVB
+  ARCH = IVB
+build testprog/ivb/testCInt2.c.opt.o : COMPILE_C testprog/testCInt2.c include/CInt.h
+  DEP_FILE = testprog/ivb/testCInt2.c.opt.o.d
+  SOURCE = testprog/testCInt2.c
+  CC = $CC_IVB
+  CFLAGS = $CFLAGS -Iexternal/erd -Itestprog -Iinclude
+  ARCH = IVB
+build testprog/ivb/Bench.Opt : LINK testprog/ivb/testCInt2.c.opt.o testprog/ivb/screening.c.o lib/ivb/libcint-opt.a lib/ivb/liboed-opt.a lib/ivb/liberd-opt.a
+  CC = $CC_IVB
+  ARCH = IVB
+build cholERI.o : COMPILE_C cholERI.c /home/jvokt/include/CInt.h
+  DEP_FILE = cholERI.o.d
+  SOURCE = cholERI.c
+  CC = $CC_IVB
+  CFLAGS = $CFLAGS -I/home/jvokt/include
+  ARCH = IVB
+build cholesky.o : COMPILE_C cholesky.c
+  DEP_FILE = cholesky.o.d
+  SOURCE = cholesky.c
+  CC = $CC_IVB
+  CFLAGS = $CFLAGS
+  ARCH = IVB
+build testchol.o : COMPILE_C testchol.c
+  DEP_FILE = testchol.o.d
+  SOURCE = testchol.c
+  CC = $CC_IVB
+  CFLAGS = $CFLAGS -I/home/jvokt/include
+  ARCH = IVB
+build oldtestchol.o : COMPILE_C oldtestchol.c
+  DEP_FILE = oldtestchol.o.d
+  SOURCE = oldtestchol.c
+  CC = $CC_IVB
+  CFLAGS = $CFLAGS -I/home/jvokt/include
+  ARCH = IVB
+build testchol : LINK testchol.o cholesky.o /home/jvokt/lib/ivb/libcint-opt.a /home/jvokt/lib/ivb/liboed-opt.a /home/jvokt/lib/ivb/liberd-opt.a
+  CC = $CC_IVB
+  ARCH = IVB
+build testcholeri : LINK testchol.o cholERI.o /home/jvokt/lib/ivb/libcint-opt.a /home/jvokt/lib/ivb/liboed-opt.a /home/jvokt/lib/ivb/liberd-opt.a
+  CC = $CC_IVB
+  ARCH = IVB
+build oldtestchol : LINK oldtestchol.o cholERI.o cholesky.o /home/jvokt/lib/ivb/libcint-opt.a /home/jvokt/lib/ivb/liboed-opt.a /home/jvokt/lib/ivb/liberd-opt.a
+  CC = $CC_IVB
+  ARCH = IVB
+build printeri.o : COMPILE_C printeri.c
+  DEP_FILE = printeri.o.d
+  SOURCE = printeri.c
+  CC = $CC_IVB
+  CFLAGS = $CFLAGS -I/home/jvokt/include
+  ARCH = IVB
+build printeri : LINK printeri.o /home/jvokt/lib/ivb/libcint-opt.a /home/jvokt/lib/ivb/liboed-opt.a /home/jvokt/lib/ivb/liberd-opt.a
+  CC = $CC_IVB
+  ARCH = IVB
